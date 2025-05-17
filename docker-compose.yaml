@@ -1,11 +1,18 @@
+version: '3.8'
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+
 services:
   base: &base
     build:
       context: .
       dockerfile: ./docker/Dockerfile
-    env_file: .env ## Change this file for customized env variables
+    env_file: .env
     volumes:
-      - ./storage:/app/storage
+      - storage_data:/app/storage
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_USERNAME=postgres
@@ -23,10 +30,6 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USERNAME=postgres
-      - POSTGRES_PASSWORD=postgres123
-      - POSTGRES_DATABASE=chatwoot
     entrypoint: docker/entrypoints/rails.sh
     command: ['sh', '-c', 'bin/rails db:create db:migrate && bundle exec rails s -p 3000 -b 0.0.0.0']
     restart: always
@@ -41,10 +44,6 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USERNAME=postgres
-      - POSTGRES_PASSWORD=postgres123
-      - POSTGRES_DATABASE=chatwoot
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
     restart: always
 
@@ -54,7 +53,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=chatwoot
       - POSTGRES_USER=postgres
@@ -66,6 +65,6 @@ services:
     command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
     env_file: .env
     volumes:
-      - ./redis-data:/data
+      - redis_data:/data
     ports:
       - '6379:6379'
