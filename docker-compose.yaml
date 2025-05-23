@@ -22,36 +22,11 @@ services:
       - POSTGRES_DATABASE=chatwoot
       - REDIS_PASSWORD=postgres
 
-  db_restore: # New service
-    image: postgres:16-alpine # Use a postgres image for psql client
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./backup.sql:/tmp/backup.sql:ro # Mount your backup.sql read-only
-      # Or use the backup_volume if you defined one
-    environment:
-      - PGHOST=postgres # Service name of your postgres container
-      - PGUSER=postgres
-      - PGPASSWORD=postgres123 # MUST match the password for the postgres service
-      - PGDATABASE=postgres # Connect to the default 'postgres' DB to manage 'chatwoot' DB
-    command: >
-      sh -c "
-        echo 'Attempting to drop and recreate chatwoot database...' &&
-        psql -c 'DROP DATABASE IF EXISTS chatwoot;' &&
-        psql -c 'CREATE DATABASE chatwoot;' &&
-        echo 'Chatwoot database recreated. Restoring from /tmp/backup.sql...' &&
-        psql -d chatwoot -f /tmp/backup.sql &&
-        echo 'Database restore complete.' ||
-        (echo 'Database restore FAILED. Check logs.' && exit 1)
-      "
-    # No restart policy, it's a one-shot task
-
   rails:
     <<: *base
     depends_on:
-      db_restore: # <--- Rails now depends on the restore completing
-        condition: service_completed_successfully
+      postgres: # Rails now depends directly on postgres
+        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
@@ -68,8 +43,8 @@ services:
   sidekiq:
     <<: *base
     depends_on:
-      rails: # Sidekiq can depend on rails as before, or also on db_restore
-        condition: service_started # Or service_healthy if rails has a healthcheck
+      rails: 
+        condition: service_started 
       postgres:
         condition: service_healthy
       redis:

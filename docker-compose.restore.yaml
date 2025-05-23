@@ -1,0 +1,46 @@
+version: '3.8'
+
+volumes:
+  postgres_data: # Ensures this volume is recognized by this compose file
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always # Or 'no' if you only want it up for restore
+    ports: # Optional for restore, but good for consistency if you need to inspect
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot # Initial DB, will be dropped/recreated by db_restore
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres123 # MUST match PGPASSWORD in db_restore
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot || pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db_restore:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backup.sql:/tmp/backup.sql:ro # Mount your backup.sql read-only
+    environment:
+      - PGHOST=postgres
+      - PGUSER=postgres
+      - PGPASSWORD=postgres123 # MUST match the password for the postgres service
+      - PGDATABASE=postgres # Connect to the default 'postgres' DB to manage 'chatwoot' DB
+    command: >
+      sh -c "
+        echo 'Attempting to drop and recreate chatwoot database for restore...' &&
+        psql -c 'DROP DATABASE IF EXISTS chatwoot;' &&
+        psql -c 'CREATE DATABASE chatwoot;' &&
+        echo 'Chatwoot database recreated. Restoring from /tmp/backup.sql...' &&
+        psql -d chatwoot -f /tmp/backup.sql &&
+        echo 'DATABASE RESTORE COMPLETE. The db_restore service will now exit.' ||
+        (echo 'DATABASE RESTORE FAILED. Check logs.' && exit 1)
+      "
+    # No restart policy, it's a one-shot task 
