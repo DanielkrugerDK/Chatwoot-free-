@@ -1,7 +1,6 @@
 version: '3.8'
 
 volumes:
-  postgres_data:
   redis_data:
   storage_data:
 
@@ -13,18 +12,10 @@ services:
     env_file: .env
     volumes:
       - storage_data:/app/storage
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USERNAME=postgres
-      - POSTGRES_PASSWORD=postgres123
-      - POSTGRES_DATABASE=chatwoot
-      - REDIS_PASSWORD=your_redis_password  # Include Redis password
 
   rails:
     <<: *base
     depends_on:
-      postgres:
-        condition: service_healthy  # Ensure PostgreSQL is ready
       redis:
         condition: service_healthy  # Ensure Redis is ready
     ports:
@@ -33,51 +24,35 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
+      - DATABASE_URL=postgresql://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?prepared_statements=false&options=-csearch_path%3Dpublic
     entrypoint: docker/entrypoints/rails.sh
-    command: ['sh', '-c', 'bin/rails db:create db:migrate 2>/dev/null || echo "Database already exists" && bundle exec rails s -p 3000 -b 0.0.0.0']
+    command: ['sh', '-c', 'bin/rails db:create; bin/rails db:migrate && bundle exec rails s -p 3000 -b 0.0.0.0']
     restart: always
 
   sidekiq:
     <<: *base
     depends_on:
-      - postgres
       - redis
       - rails
     environment:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
+      - DATABASE_URL=postgresql://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DATABASE}?prepared_statements=false&options=-csearch_path%3Dpublic
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
     restart: always
 
-  postgres:
-    image: pgvector/pgvector:pg16
-    restart: always
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=chatwoot  # Database name must match Rails config
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres123
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
-    image: redis:alpine
-    restart: always
-    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    image: redis:7.0-alpine
     env_file: .env
-    volumes:
-      - redis_data:/data
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\" --save '' --appendonly no"]
     ports:
       - '6379:6379'
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "$REDIS_PASSWORD", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
