@@ -4,6 +4,8 @@ volumes:
   postgres_data:
   redis_data:
   storage_data:
+  # Optional: If backup.sql is large and you want to mount it
+  # backup_volume: # You'd need to define how this gets populated
 
 services:
   base: &base
@@ -16,24 +18,49 @@ services:
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_USERNAME=postgres
-      - POSTGRES_PASSWORD=postgres123
+      - POSTGRES_PASSWORD=postgres123 # Ensure this matches postgres service
       - POSTGRES_DATABASE=chatwoot
-      - REDIS_PASSWORD=your_redis_password  # Include Redis password
+      - REDIS_PASSWORD=postgres
+
+  db_restore: # New service
+    image: postgres:16-alpine # Use a postgres image for psql client
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backup.sql:/tmp/backup.sql:ro # Mount your backup.sql read-only
+      # Or use the backup_volume if you defined one
+    environment:
+      - PGHOST=postgres # Service name of your postgres container
+      - PGUSER=postgres
+      - PGPASSWORD=postgres123 # MUST match the password for the postgres service
+      - PGDATABASE=postgres # Connect to the default 'postgres' DB to manage 'chatwoot' DB
+    command: >
+      sh -c "
+        echo 'Attempting to drop and recreate chatwoot database...' &&
+        psql -c 'DROP DATABASE IF EXISTS chatwoot;' &&
+        psql -c 'CREATE DATABASE chatwoot;' &&
+        echo 'Chatwoot database recreated. Restoring from /tmp/backup.sql...' &&
+        psql -d chatwoot -f /tmp/backup.sql &&
+        echo 'Database restore complete.' ||
+        (echo 'Database restore FAILED. Check logs.' && exit 1)
+      "
+    # No restart policy, it's a one-shot task
 
   rails:
     <<: *base
     depends_on:
-      postgres:
-        condition: service_healthy  # Ensure PostgreSQL is ready
+      db_restore: # <--- Rails now depends on the restore completing
+        condition: service_completed_successfully
       redis:
-        condition: service_healthy  # Ensure Redis is ready
+        condition: service_healthy
     ports:
       - '3000:3000'
     environment:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
-      - SKIP_DB_SETUP=true
+      - SKIP_DB_SETUP=true # Keep this so Rails doesn't try to migrate
     entrypoint: docker/entrypoints/rails.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
     restart: always
@@ -41,13 +68,17 @@ services:
   sidekiq:
     <<: *base
     depends_on:
-      - postgres
-      - redis
-      - rails
+      rails: # Sidekiq can depend on rails as before, or also on db_restore
+        condition: service_started # Or service_healthy if rails has a healthcheck
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
+      - SKIP_DB_SETUP=true # Keep this for sidekiq too
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
     restart: always
 
@@ -59,20 +90,20 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=chatwoot  # Database name must match Rails config
+      - POSTGRES_DB=chatwoot # Initial DB, will be dropped/recreated by db_restore
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres123
+      - POSTGRES_PASSWORD=postgres123 # MUST match PGPASSWORD in db_restore
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot || pg_isready -U postgres -d postgres"] # Check chatwoot OR default postgres db
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:alpine
+    image: redis:alpine # Consider using redis:7.0-alpine to match your supabase setup if issues arise
     restart: always
     command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
-    env_file: .env
+    env_file: .env # Ensure REDIS_PASSWORD is in .env
     volumes:
       - redis_data:/data
     ports:
