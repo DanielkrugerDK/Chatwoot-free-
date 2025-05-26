@@ -25,11 +25,11 @@ docker compose up -d
 
 ## What Happens Automatically
 
-### If `backup.sql` exists:
+### If `backup.sql` exists and hasn't been restored:
 1. ✅ Drops existing database
 2. ✅ Creates fresh database  
 3. ✅ Restores from `backup.sql`
-4. ✅ Renames to `backup.sql.completed` (prevents re-restore)
+4. ✅ Creates `backup.sql.completed` marker (prevents re-restore)
 5. ✅ Starts the application
 
 ### If `backup.sql` doesn't exist:
@@ -41,9 +41,9 @@ docker compose up -d
 ## Files
 
 - `docker-compose.yaml` - Main compose file
-- `docker/entrypoints/simple-startup.sh` - Auto-restore script
+- `docker/entrypoints/rails.sh` - Auto-restore script (enhanced)
 - `backup.sql` - Your backup file (place in root)
-- `backup.sql.completed` - Completed backup (auto-created)
+- `backup.sql.completed` - Marker file indicating restore completed (auto-created)
 
 ## Environment Variables
 
