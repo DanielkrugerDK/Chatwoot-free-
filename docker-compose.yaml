@@ -4,8 +4,6 @@ volumes:
   postgres_data:
   redis_data:
   storage_data:
-  # Optional: If backup.sql is large and you want to mount it
-  # backup_volume: # You'd need to define how this gets populated
 
 services:
   base: &base
@@ -15,17 +13,11 @@ services:
     env_file: .env
     volumes:
       - storage_data:/app/storage
-    environment:
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USERNAME=postgres
-      - POSTGRES_PASSWORD=postgres123 # Ensure this matches postgres service
-      - POSTGRES_DATABASE=chatwoot
-      - REDIS_PASSWORD=postgres
 
   rails:
     <<: *base
     depends_on:
-      postgres: # Rails now depends directly on postgres
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -35,16 +27,20 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
-      - SKIP_DB_SETUP=true # Keep this so Rails doesn't try to migrate
-    entrypoint: docker/entrypoints/rails.sh
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_DATABASE=chatwoot_production
+    volumes:
+      - storage_data:/app/storage
+      - ./backup.sql:/app/backup.sql:ro  # Mount backup.sql if it exists
+    entrypoint: docker/entrypoints/simple-startup.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
     restart: always
 
   sidekiq:
     <<: *base
     depends_on:
-      rails: 
-        condition: service_started 
+      rails:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
@@ -53,32 +49,34 @@ services:
       - NODE_ENV=production
       - RAILS_ENV=production
       - INSTALLATION_ENV=docker
-      - SKIP_DB_SETUP=true # Keep this for sidekiq too
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_DATABASE=chatwoot_production
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
     restart: always
 
   postgres:
     image: pgvector/pgvector:pg16
     restart: always
+    env_file: .env
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=chatwoot # Initial DB, will be dropped/recreated by db_restore
+      - POSTGRES_DB=chatwoot_production
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres123 # MUST match PGPASSWORD in db_restore
+      # POSTGRES_PASSWORD is sourced from the .env file
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot || pg_isready -U postgres -d postgres"] # Check chatwoot OR default postgres db
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot_production || pg_isready -U postgres -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:alpine # Consider using redis:7.0-alpine to match your supabase setup if issues arise
+    image: redis:alpine
     restart: always
     command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
-    env_file: .env # Ensure REDIS_PASSWORD is in .env
+    env_file: .env
     volumes:
       - redis_data:/data
     ports:
