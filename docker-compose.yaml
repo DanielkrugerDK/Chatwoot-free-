@@ -71,8 +71,7 @@ services:
     container_name: chatwoot_sidekiq_modificado # Nome do container
     # Depende do serviço Rails estar iniciado
     depends_on:
-      rails:
-        condition: service_started
+      - rails # CORRIGIDO: Usando formato de lista simples
     environment:
       # Variáveis específicas do Sidekiq (algumas vêm do .env)
       - NODE_ENV=production
