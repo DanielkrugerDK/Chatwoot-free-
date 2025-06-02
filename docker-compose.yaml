@@ -39,7 +39,8 @@ services:
       - INSTALLATION_ENV=docker
       # Garante que o nome do banco de dados seja o mesmo do seu ambiente
       - POSTGRES_DATABASE=chatwoot
-    entrypoint: docker/entrypoints/rails.sh
+    # CORRIGIDO: Usando caminho absoluto para o entrypoint
+    entrypoint: /app/docker/entrypoints/rails.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
 
   # Serviço Sidekiq para processamento em background
@@ -62,3 +63,4 @@ services:
 # Serviços de Postgres e Redis foram removidos pois você usa versões externas.
 # Volumes postgres_data e redis_data foram removidos.
 # O volume storage_data foi substituído pelo volume externo chatwoot_storage_volume.
+
