@@ -12,11 +12,10 @@ volumes:
     name: chatwoot_storage_volume
 
 services:
-  # Define uma base para reuso, incluindo build e env_file
+  # Define uma base para reuso, usando a imagem publicada e env_file
   base: &base
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile
+    # USA A IMAGEM PUBLICADA NO DOCKER HUB
+    image: nieldk/chatwoot-modificado:latest
     env_file: .env
     # Monta o volume externo para armazenamento persistente
     volumes:
@@ -28,9 +27,9 @@ services:
   # Serviço principal da aplicação Rails
   rails:
     <<: *base
-    container_name: chatwoot_app_modificado # Nome do container
+    # container_name e restart removidos (não suportados neste modo de deploy)
+    # deploy removido (não suportado neste modo de deploy)
     # Depende dos serviços externos (Postgres e Redis já devem estar rodando)
-    # Não definimos depends_on aqui pois são externos
     ports:
       - '3000:3000' # Expõe a porta 3000 internamente
     environment:
@@ -42,36 +41,15 @@ services:
       - POSTGRES_DATABASE=chatwoot
     entrypoint: docker/entrypoints/rails.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
-    restart: always
-    deploy:
-      # Configurações de deploy (réplicas, placement, recursos)
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      resources:
-        limits:
-          cpus: "1"
-          memory: 1024M # Ajuste conforme necessidade
-      # Labels do Traefik para roteamento e SSL (copiados do seu YAML original)
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.chatwoot-app-modificado.rule=Host(`chat.gymprogress.shop`)
-        - traefik.http.routers.chatwoot-app-modificado.entrypoints=websecure
-        - traefik.http.routers.chatwoot-app-modificado.tls.certresolver=letsencryptresolver
-        - traefik.http.routers.chatwoot-app-modificado.service=chatwoot-app-modificado-service
-        - traefik.http.services.chatwoot-app-modificado-service.loadbalancer.server.port=3000
-        - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https
-        - traefik.http.routers.chatwoot-app-modificado.middlewares=sslheader@docker
 
   # Serviço Sidekiq para processamento em background
   sidekiq:
     <<: *base
-    container_name: chatwoot_sidekiq_modificado # Nome do container
+    # container_name e restart removidos (não suportados neste modo de deploy)
+    # deploy removido (não suportado neste modo de deploy)
     # Depende do serviço Rails estar iniciado
     depends_on:
-      - rails # CORRIGIDO: Usando formato de lista simples
+      - rails
     environment:
       # Variáveis específicas do Sidekiq (algumas vêm do .env)
       - NODE_ENV=production
@@ -80,20 +58,7 @@ services:
       # Garante que o nome do banco de dados seja o mesmo do seu ambiente
       - POSTGRES_DATABASE=chatwoot
     command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
-    restart: always
-    deploy:
-      # Configurações de deploy (réplicas, placement, recursos)
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      resources:
-        limits:
-          cpus: "1"
-          memory: 1024M # Ajuste conforme necessidade
 
 # Serviços de Postgres e Redis foram removidos pois você usa versões externas.
 # Volumes postgres_data e redis_data foram removidos.
 # O volume storage_data foi substituído pelo volume externo chatwoot_storage_volume.
-
