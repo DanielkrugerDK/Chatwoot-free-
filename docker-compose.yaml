@@ -40,7 +40,7 @@ services:
       # Garante que o nome do banco de dados seja o mesmo do seu ambiente
       - POSTGRES_DATABASE=chatwoot
     # CORRIGIDO: Usando caminho absoluto para o entrypoint
-    entrypoint: /app/docker/entrypoints/rails.sh
+    entrypoint: /docker/entrypoints/rails.sh
     command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
 
   # Serviço Sidekiq para processamento em background
