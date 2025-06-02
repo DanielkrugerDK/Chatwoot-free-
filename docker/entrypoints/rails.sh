@@ -70,3 +70,4 @@ done
 
 # Execute the main process of the container
 exec "$@"
+#teste
